@@ -1,0 +1,14 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# node / electron
+node_modules/
+desktop/out/
+desktop/dist/
+
+# local junk
+.DS_Store
+*.log

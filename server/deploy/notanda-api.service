@@ -1,0 +1,14 @@
+[Unit]
+Description=Notanda API
+After=network.target
+
+[Service]
+User=__USER__
+WorkingDirectory=__SERVER_DIR__
+EnvironmentFile=/etc/notanda/env
+ExecStart=/home/__USER__/.local/bin/uv run uvicorn notanda_server.api:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
