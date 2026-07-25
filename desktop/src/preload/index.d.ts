@@ -5,6 +5,7 @@ export interface Settings {
   serverUrl: string
   apiKey: string
   lang: 'ar' | 'en'
+  meetingLang: 'ar' | 'en'
 }
 
 export interface NotandaApi {

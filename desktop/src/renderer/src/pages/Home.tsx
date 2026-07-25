@@ -1,16 +1,29 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { MeetingListItem, MeetingStatus } from '../api/types'
+import type { MeetingListItem } from '../api/types'
 import type { PageProps } from '../App'
+import type { Lang } from '../i18n'
+import { Button, EmptyState, PageHeader, StatusPill, formatDuration } from '../components/ui'
 
-const statusStyles: Record<MeetingStatus, string> = {
-  recording: 'bg-red-100 text-red-700',
-  processing: 'bg-amber-100 text-amber-700',
-  complete: 'bg-emerald-100 text-emerald-700',
-  error: 'bg-neutral-200 text-neutral-600'
+function formatWhen(iso: string, lang: Lang): string {
+  const d = new Date(iso)
+  const today = new Date()
+  const sameDay = d.toDateString() === today.toDateString()
+  const locale = lang === 'ar' ? 'ar' : 'en-GB'
+  return sameDay
+    ? d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString(locale, { day: 'numeric', month: 'short' }) +
+        ' · ' +
+        d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function Home({ t, navigate, configured }: PageProps & { configured: boolean }) {
+export default function Home({
+  t,
+  lang,
+  navigate,
+  configured,
+  meetingLang
+}: PageProps & { configured: boolean; meetingLang: Lang }) {
   const [meetings, setMeetings] = useState<MeetingListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [title, setTitle] = useState('')
@@ -18,16 +31,24 @@ export default function Home({ t, navigate, configured }: PageProps & { configur
 
   useEffect(() => {
     if (!configured) return
-    api
-      .listMeetings()
-      .then((r) => setMeetings(r.meetings))
-      .catch(() => setError(t('serverUnreachable')))
+    const load = () =>
+      api
+        .listMeetings()
+        .then((r) => {
+          setMeetings(r.meetings)
+          setError(null)
+        })
+        .catch(() => setError(t('serverUnreachable')))
+    void load()
+    // meetings finish transcribing in the background, so keep the list fresh
+    const timer = setInterval(load, 15_000)
+    return () => clearInterval(timer)
   }, [configured])
 
   const startMeeting = async () => {
     setStarting(true)
     try {
-      const { id } = await api.createMeeting(title.trim() || null, 'ar')
+      const { id } = await api.createMeeting(title.trim() || null, meetingLang)
       navigate({ name: 'recording', meetingId: id, title: title.trim() || null })
     } catch {
       setError(t('serverUnreachable'))
@@ -37,62 +58,59 @@ export default function Home({ t, navigate, configured }: PageProps & { configur
 
   return (
     <>
-      <header className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('appName')}</h1>
-        <button
-          className="text-sm text-neutral-500 hover:text-neutral-800"
-          onClick={() => navigate({ name: 'settings' })}
-        >
+      <PageHeader title={t('appName')} subtitle={t('tagline')}>
+        <Button variant="ghost" onClick={() => navigate({ name: 'settings' })}>
           {t('settings')}
-        </button>
-      </header>
+        </Button>
+      </PageHeader>
 
       {!configured && (
-        <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          {t('configureFirst')}
-        </p>
+        <div className="mb-5 flex items-center justify-between gap-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+          <span>{t('configureFirst')}</span>
+          <Button variant="ghost" onClick={() => navigate({ name: 'settings' })}>
+            {t('openSettings')}
+          </Button>
+        </div>
       )}
 
       <div className="mb-8 flex gap-3">
         <input
-          className="flex-1 rounded-xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-neutral-500"
+          className="flex-1 rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:focus:border-neutral-400"
           placeholder={t('meetingTitlePlaceholder')}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && configured && !starting && void startMeeting()}
         />
-        <button
-          className="rounded-xl bg-neutral-900 px-6 py-3 font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-40"
-          disabled={!configured || starting}
-          onClick={() => void startMeeting()}
-        >
-          ● {t('newMeeting')}
-        </button>
+        <Button disabled={!configured || starting} onClick={() => void startMeeting()}>
+          <span className="size-2.5 rounded-full bg-red-500" />
+          {starting ? t('starting') : t('newMeeting')}
+        </Button>
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold text-neutral-500">{t('meetings')}</h2>
+      <h2 className="mb-3 text-xs font-semibold tracking-wide text-neutral-400 uppercase">
+        {t('meetings')}
+      </h2>
+
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {meetings?.length === 0 && <p className="text-neutral-400">{t('noMeetings')}</p>}
-      <ul className="flex flex-col gap-2 overflow-y-auto">
+      {meetings?.length === 0 && <EmptyState icon="🎙️" text={t('noMeetings')} />}
+
+      <ul className="flex flex-col gap-2 overflow-y-auto pb-4">
         {meetings?.map((m) => (
           <li key={m.id}>
             <button
-              className="flex w-full items-center justify-between rounded-xl border border-neutral-200 bg-white px-4 py-3 text-start hover:border-neutral-400"
+              className="flex w-full items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3.5 text-start transition hover:border-neutral-400 hover:shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-600"
               onClick={() => navigate({ name: 'detail', meetingId: m.id })}
             >
-              <span className="truncate">
-                {m.title ?? new Date(m.created_at).toLocaleString()}
-              </span>
-              <span className={`ms-3 rounded-full px-2 py-0.5 text-xs ${statusStyles[m.status]}`}>
-                {t(
-                  m.status === 'recording'
-                    ? 'statusRecording'
-                    : m.status === 'processing'
-                      ? 'statusProcessing'
-                      : m.status === 'complete'
-                        ? 'statusComplete'
-                        : 'statusError'
-                )}
-              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium" dir="auto">
+                  {m.title ?? formatWhen(m.created_at, lang)}
+                </div>
+                <div className="mt-0.5 text-xs text-neutral-400">
+                  {formatWhen(m.created_at, lang)}
+                  {m.duration_ms != null && ` · ${formatDuration(m.duration_ms)}`}
+                </div>
+              </div>
+              <StatusPill status={m.status} t={t} />
             </button>
           </li>
         ))}

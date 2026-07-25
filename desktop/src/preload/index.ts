@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-export type Settings = { serverUrl: string; apiKey: string; lang: 'ar' | 'en' }
+export type Settings = {
+  serverUrl: string
+  apiKey: string
+  lang: 'ar' | 'en'
+  meetingLang: 'ar' | 'en'
+}
 
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),

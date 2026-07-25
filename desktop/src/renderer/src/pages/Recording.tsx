@@ -4,11 +4,7 @@ import type { Segment } from '../api/types'
 import { DualRecorder } from '../capture/recorder'
 import { uploadQueue } from '../capture/uploadQueue'
 import type { PageProps } from '../App'
-
-function formatElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-}
+import { Button, PageHeader, SpeakerLabel, formatDuration } from '../components/ui'
 
 export default function Recording({
   t,
@@ -43,7 +39,7 @@ export default function Recording({
             setSegments((prev) => [...prev, ...r.segments].sort((a, b) => a.start_ms - b.start_ms))
           }
         })
-        .catch(() => {}) // transient poll failures are fine; queue handles uploads
+        .catch(() => {}) // transient poll failures are fine; the queue owns uploads
     }, 5000)
 
     return () => {
@@ -60,8 +56,7 @@ export default function Recording({
   const stop = async () => {
     setPhase('stopping')
     const durationMs = recorderRef.current?.stop() ?? null
-    // final chunks flush asynchronously; wait for the queue, then finish
-    await new Promise((r) => setTimeout(r, 300))
+    await new Promise((r) => setTimeout(r, 300)) // let final chunks flush into the queue
     await uploadQueue.waitForMeeting(meetingId)
     try {
       await api.finishMeeting(meetingId, durationMs)
@@ -73,24 +68,28 @@ export default function Recording({
 
   return (
     <>
-      <header className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">{title ?? t('appName')}</h1>
-          <p className="text-sm text-red-600">
-            {phase === 'recording' && <>● {t('recording')} · {formatElapsed(elapsed)}</>}
-          </p>
-        </div>
-        <button
-          className="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700 disabled:opacity-40"
-          disabled={phase !== 'recording'}
-          onClick={() => void stop()}
-        >
-          {phase === 'stopping' ? '…' : t('stopRecording')}
-        </button>
-      </header>
+      <PageHeader
+        title={title ?? t('recording')}
+        subtitle={
+          phase === 'recording' ? (
+            <span className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <span className="rec-dot size-2.5 rounded-full bg-red-500" />
+              {t('recording')} · <span className="tabular-nums">{formatDuration(elapsed)}</span>
+            </span>
+          ) : phase === 'starting' ? (
+            t('starting')
+          ) : undefined
+        }
+      >
+        <Button variant="danger" disabled={phase !== 'recording'} onClick={() => void stop()}>
+          {phase === 'stopping' ? t('finishing') : t('stopRecording')}
+        </Button>
+      </PageHeader>
 
       {phase === 'failed' && (
-        <p className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{t('captureFailed')}</p>
+        <p className="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">
+          {t('captureFailed')}
+        </p>
       )}
       {pendingUploads > 0 && (
         <p className="mb-2 text-xs text-neutral-400">
@@ -98,21 +97,26 @@ export default function Recording({
         </p>
       )}
 
-      <div className="flex-1 overflow-y-auto rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
         {segments.length === 0 && phase === 'recording' && (
-          <p className="text-neutral-400">{t('waitingForSpeech')}</p>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-neutral-400">{t('waitingForSpeech')}</p>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="shimmer flex gap-3" style={{ animationDelay: `${i * 0.2}s` }}>
+                <div className="h-3 w-14 shrink-0 rounded bg-neutral-200 dark:bg-neutral-800" />
+                <div
+                  className="h-3 rounded bg-neutral-200 dark:bg-neutral-800"
+                  style={{ width: `${70 - i * 15}%` }}
+                />
+              </div>
+            ))}
+          </div>
         )}
-        <ul className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-3.5">
           {segments.map((seg) => (
             <li key={seg.seq} className="flex gap-3">
-              <span
-                className={`shrink-0 text-xs font-semibold ${
-                  seg.speaker === 'me' ? 'text-blue-600' : 'text-neutral-500'
-                }`}
-              >
-                {t(seg.speaker === 'me' ? 'me' : 'them')}
-              </span>
-              {/* dir=auto: English-majority lines render LTR inside the RTL page */}
+              <SpeakerLabel speaker={seg.speaker} t={t} />
+              {/* dir=auto so English-majority lines read LTR inside an RTL page */}
               <span dir="auto" className="text-sm leading-relaxed">
                 {seg.text}
               </span>

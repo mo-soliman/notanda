@@ -6,8 +6,9 @@ import { initMain } from 'electron-audio-loopback'
 // Registers the enable/disable-loopback-audio IPC handlers; must run before app ready.
 initMain()
 
-type Settings = { serverUrl: string; apiKey: string; lang: 'ar' | 'en' }
-const DEFAULTS: Settings = { serverUrl: '', apiKey: '', lang: 'ar' }
+// UI defaults to English; meetings default to Arabic, which is the product's reason to exist.
+type Settings = { serverUrl: string; apiKey: string; lang: 'ar' | 'en'; meetingLang: 'ar' | 'en' }
+const DEFAULTS: Settings = { serverUrl: '', apiKey: '', lang: 'en', meetingLang: 'ar' }
 const settingsPath = (): string => join(app.getPath('userData'), 'settings.json')
 
 function readSettings(): Settings {

@@ -17,6 +17,13 @@ export interface AppSettings {
   serverUrl: string
   apiKey: string
   lang: Lang
+  meetingLang: Lang
+}
+
+export interface PageProps {
+  t: ReturnType<typeof makeT>
+  lang: Lang
+  navigate: (route: Route) => void
 }
 
 export default function App() {
@@ -33,6 +40,12 @@ export default function App() {
     })()
   }, [])
 
+  useEffect(() => {
+    if (!settings) return
+    document.documentElement.setAttribute('dir', settings.lang === 'ar' ? 'rtl' : 'ltr')
+    document.documentElement.setAttribute('lang', settings.lang)
+  }, [settings?.lang])
+
   if (!settings) return null
   const t = makeT(settings.lang)
 
@@ -42,14 +55,12 @@ export default function App() {
     setSettings(s)
   }
 
-  const dir = settings.lang === 'ar' ? 'rtl' : 'ltr'
-  document.documentElement.setAttribute('dir', dir)
-  document.documentElement.setAttribute('lang', settings.lang)
-
   const props = { t, lang: settings.lang, navigate: setRoute }
   return (
-    <div className="mx-auto flex h-screen max-w-3xl flex-col px-6 py-5">
-      {route.name === 'home' && <Home {...props} configured={isConfigured()} />}
+    <div className="mx-auto flex h-full max-w-3xl flex-col px-7 py-6">
+      {route.name === 'home' && (
+        <Home {...props} configured={isConfigured()} meetingLang={settings.meetingLang} />
+      )}
       {route.name === 'recording' && (
         <Recording {...props} meetingId={route.meetingId} title={route.title} />
       )}
@@ -59,10 +70,4 @@ export default function App() {
       )}
     </div>
   )
-}
-
-export interface PageProps {
-  t: ReturnType<typeof makeT>
-  lang: Lang
-  navigate: (route: Route) => void
 }

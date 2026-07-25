@@ -8,12 +8,24 @@ import sqlite3
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from . import db, settings
 from .keys import hash_key
 
 app = FastAPI(title="Notanda API", docs_url=None, redoc_url=None)
+
+# The desktop renderer calls this API cross-origin: http://localhost:5173 in dev,
+# and origin "null" from file:// in a packaged build. Auth is a bearer token and
+# never a cookie, so there is no credentialed-request surface to protect here.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_conn():
