@@ -1,16 +1,20 @@
-"""ASR seam: exactly one entry point, `transcribe(pcm) -> str`.
+"""ASR seam: one entry point, `transcribe_batch(spans) -> list[str]`.
 
 Backends (NOTANDA_ASR_BACKEND):
-- "transcribe_cpp": Cohere Transcribe Arabic Q8_0 GGUF via the transcribe.cpp
-  Python binding (`pip install /opt/notanda/transcribe.cpp/bindings/python`;
-  needs the locally built libtranscribe — auto-discovered from the repo, or
-  set TRANSCRIBE_LIBRARY). Model loads once and stays resident. The binding
-  allows one run at a time per Model — fine, the worker is single-threaded.
-- "transcribe_cli": subprocess fallback (`transcribe-cli -m model.gguf file.wav`)
-  if the binding won't build on the box.
+- "transcribe_cli" (default): Cohere Transcribe Arabic Q8_0 GGUF through the
+  transcribe.cpp CLI in batch mode — one process per chunk, all of that
+  chunk's VAD spans in a single invocation, so the ~1.8 s model load is paid
+  once per chunk rather than once per span.
+
+  A subprocess is not just convenience: pysilero-vad ships its own bundled
+  libggml, and in-process it wins the SONAME race against libtranscribe's,
+  crashing the flash-attention kernel on a version mismatch. The process
+  boundary keeps the two ggml builds apart for good.
+
 - "stub": instant fake output for local development without the model.
 """
 
+import json
 import struct
 import subprocess
 import tempfile
@@ -24,16 +28,14 @@ from .audio import SAMPLE_RATE
 # Tags the model emits on residual noise despite VAD (HF discussion #4).
 HALLUCINATION_MARKERS = ("@@@ضوضاء", "@@@فراغ", "@@@")
 
-_model = None
 
-
-def transcribe(pcm: np.ndarray) -> str:
-    """int16 mono 16 kHz -> transcript text ('' if nothing usable)."""
+def transcribe_batch(spans: list[np.ndarray]) -> list[str]:
+    """int16 mono 16 kHz spans -> one transcript each, same order."""
+    if not spans:
+        return []
     if settings.ASR_BACKEND == "stub":
-        return f"[stub {len(pcm) / SAMPLE_RATE:.1f}s speech]"
-    if settings.ASR_BACKEND == "transcribe_cli":
-        return _run_cli(pcm)
-    return _run_binding(pcm)
+        return [f"[stub {len(s) / SAMPLE_RATE:.1f}s speech]" for s in spans]
+    return _run_cli_batch(spans)
 
 
 def clean(text: str, previous: str | None) -> str:
@@ -46,30 +48,39 @@ def clean(text: str, previous: str | None) -> str:
     return text
 
 
-def _run_binding(pcm: np.ndarray) -> str:
-    global _model
-    if _model is None:
-        import transcribe_cpp
-
-        _model = transcribe_cpp.Model(settings.MODEL_PATH)
-    # One run at a time per Model (0.x); the worker is single-threaded so a
-    # fresh short-lived session per span is fine.
-    with _model.session(n_threads=settings.TRANSCRIBE_THREADS) as session:
-        result = session.run(pcm.astype(np.float32) / 32768.0)
-    return result.text.strip()
-
-
-def _run_cli(pcm: np.ndarray) -> str:
+def _run_cli_batch(spans: list[np.ndarray]) -> list[str]:
     with tempfile.TemporaryDirectory() as tmp:
-        wav = Path(tmp) / "span.wav"
-        _write_wav(wav, pcm)
+        tmpdir = Path(tmp)
+        paths = []
+        for i, span in enumerate(spans):
+            path = tmpdir / f"span-{i:04d}.wav"
+            _write_wav(path, span)
+            paths.append(path)
+        list_file = tmpdir / "batch.list"
+        list_file.write_text("\n".join(str(p) for p in paths) + "\n")
+
         proc = subprocess.run(
-            [settings.TRANSCRIBE_BIN, "-m", settings.MODEL_PATH, str(wav)],
-            capture_output=True, timeout=600,
+            [settings.TRANSCRIBE_BIN, "--batch", str(list_file), "--batch-jsonl",
+             "-m", settings.MODEL_PATH, "--threads", str(settings.TRANSCRIBE_THREADS),
+             "-l", "ar", "-q"],
+            capture_output=True, timeout=1800,
         )
-    if proc.returncode != 0:
-        raise RuntimeError(f"transcribe-cli failed: {proc.stderr.decode(errors='replace')[:500]}")
-    return proc.stdout.decode(errors="replace").strip()
+        if proc.returncode != 0:
+            raise RuntimeError(f"transcribe-cli failed: {proc.stderr.decode(errors='replace')[:500]}")
+
+        # stdout interleaves JSONL results with plain-text runtime logs
+        by_path: dict[str, str] = {}
+        for line in proc.stdout.decode(errors="replace").splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "file" in rec:
+                by_path[rec["file"]] = rec.get("text", "")
+        return [by_path.get(str(p), "") for p in paths]
 
 
 def _write_wav(path: Path, pcm: np.ndarray) -> None:

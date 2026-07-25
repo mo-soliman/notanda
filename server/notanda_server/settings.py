@@ -7,10 +7,10 @@ DATA_DIR = Path(os.environ.get("NOTANDA_DATA_DIR", "/var/lib/notanda"))
 DB_PATH = DATA_DIR / "notanda.db"
 AUDIO_DIR = DATA_DIR / "audio"
 
-# ASR backend: "transcribe_cpp" (production) or "stub" (local dev without the model)
-ASR_BACKEND = os.environ.get("NOTANDA_ASR_BACKEND", "transcribe_cpp")
-MODEL_PATH = os.environ.get("NOTANDA_MODEL_PATH", "/opt/notanda/models/cohere-transcribe-arabic-07-2026-Q8_0.gguf")
-TRANSCRIBE_BIN = os.environ.get("NOTANDA_TRANSCRIBE_BIN", "/opt/notanda/transcribe.cpp/build/bin/transcribe-cli")
+# ASR backend: "transcribe_cli" (production) or "stub" (local dev without the model)
+ASR_BACKEND = os.environ.get("NOTANDA_ASR_BACKEND", "transcribe_cli")
+MODEL_PATH = os.environ.get("NOTANDA_MODEL_PATH", "/models/cohere-transcribe-arabic-07-2026-Q8_0.gguf")
+TRANSCRIBE_BIN = os.environ.get("NOTANDA_TRANSCRIBE_BIN", "/usr/local/bin/transcribe-cli")
 TRANSCRIBE_THREADS = int(os.environ.get("NOTANDA_TRANSCRIBE_THREADS", "3"))
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")

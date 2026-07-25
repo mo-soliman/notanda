@@ -36,17 +36,16 @@ def main() -> None:
     print(f"audio {audio_s:.0f}s | decode {decode_s:.1f}s | VAD {vad_s:.1f}s | "
           f"speech {speech_s:.0f}s in {len(spans)} spans ({speech_s / audio_s:.0%} of audio)")
 
-    texts = []
-    asr_s = 0.0
-    for i, span in enumerate(spans):
-        t0 = time.perf_counter()
-        text = asr.transcribe(span.audio)
-        dt = time.perf_counter() - t0
-        asr_s += dt
+    # One batched ASR process, exactly as the worker runs it per chunk.
+    t0 = time.perf_counter()
+    raw = asr.transcribe_batch([s.audio for s in spans])
+    asr_s = time.perf_counter() - t0
+
+    texts: list[str] = []
+    for text in raw:
         texts.append(asr.clean(text, texts[-1] if texts else None))
-        span_s = (span.end_ms - span.start_ms) / 1000
-        note = " (cold: includes model load)" if i == 0 else ""
-        print(f"  span {i:3d} {span_s:5.1f}s -> {dt:5.1f}s  rtf {dt / span_s:.2f}{note}")
+    print(f"batched {len(spans)} spans in one process: {asr_s:.1f}s "
+          f"({asr_s / max(speech_s, 0.1):.2f}x speech)")
 
     total_s = decode_s + vad_s + asr_s
     print(f"\nASR time {asr_s:.0f}s | pipeline total {total_s:.0f}s")

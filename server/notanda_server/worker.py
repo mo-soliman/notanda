@@ -35,8 +35,9 @@ def process_chunk(conn: sqlite3.Connection, chunk: sqlite3.Row) -> None:
     previous = prev_row["text"] if prev_row else None
 
     rows = []
-    for span in spans:
-        text = asr.clean(asr.transcribe(span.audio), previous)
+    texts = asr.transcribe_batch([s.audio for s in spans])  # one ASR process per chunk
+    for span, raw in zip(spans, texts):
+        text = asr.clean(raw, previous)
         if not text:
             continue
         previous = text

@@ -189,5 +189,7 @@ def segments(meeting_id: str, conn: Conn, key_id: KeyId, after_seq: int = 0):
 
 @app.get("/healthz")
 def healthz(conn: Conn):
-    depth = conn.execute("SELECT COUNT(*) AS n FROM chunks WHERE status = 'pending'").fetchone()["n"]
+    depth = conn.execute(
+        "SELECT COUNT(*) AS n FROM chunks WHERE status IN ('pending', 'processing')"
+    ).fetchone()["n"]
     return {"ok": True, "queue_depth": depth}
