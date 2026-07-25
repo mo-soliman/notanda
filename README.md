@@ -28,6 +28,20 @@ pnpm dev
 
 In Settings: server URL `http://127.0.0.1:8000` + the API key from above. macOS will ask for Microphone and Screen Recording permissions on first record (screen recording is how Electron captures system audio in v1).
 
+## Live deployment
+
+Backend runs on the Oracle Ampere box at **https://api.novari.style** (temporary domain; TLS via certbot/Let's Encrypt, auto-renewing). Point the desktop app's Settings there with an API key from step 2 below.
+
+```bash
+ssh ubuntu@92.5.108.127
+cd ~/notanda
+docker compose ps                 # api + worker
+docker compose logs -f worker     # transcription progress
+docker compose up -d --build      # deploy after a git pull
+```
+
+Measured on this box: **RTF 0.69** end-to-end (~21 s to transcribe a 30 s chunk). See `docs/BENCHMARK-M0.md`.
+
 ## Deploy to the Oracle box (M0/M1)
 
 ```bash
