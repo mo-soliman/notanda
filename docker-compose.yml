@@ -1,0 +1,39 @@
+# Notanda backend. Both services run the same image (built once) — the API
+# ingests chunks, the worker transcribes them. They share /data, where SQLite
+# doubles as the job queue.
+#
+#   cp .env.example .env   # then fill in ANTHROPIC_API_KEY + model filename
+#   docker compose up -d --build
+
+services:
+  api:
+    build:
+      context: ./server
+    image: notanda-server:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"   # nginx on the host terminates TLS and proxies here
+    volumes:
+      - notanda-data:/data
+      - ${NOTANDA_MODEL_DIR:-/opt/notanda/models}:/models:ro
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    image: notanda-server:latest
+    depends_on:
+      - api          # api's build produces the shared image
+    restart: unless-stopped
+    command: python -m notanda_server.worker
+    volumes:
+      - notanda-data:/data
+      - ${NOTANDA_MODEL_DIR:-/opt/notanda/models}:/models:ro
+    env_file: .env
+    mem_limit: 6g    # safety rail: the box has 24 GB and also runs nginx
+
+volumes:
+  notanda-data:

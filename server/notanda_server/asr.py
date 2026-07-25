@@ -51,11 +51,10 @@ def _run_binding(pcm: np.ndarray) -> str:
     if _model is None:
         import transcribe_cpp
 
-        try:
-            _model = transcribe_cpp.Model(settings.MODEL_PATH, n_threads=settings.TRANSCRIBE_THREADS)
-        except TypeError:  # binding version without an n_threads kwarg
-            _model = transcribe_cpp.Model(settings.MODEL_PATH)
-    with _model.session() as session:
+        _model = transcribe_cpp.Model(settings.MODEL_PATH)
+    # One run at a time per Model (0.x); the worker is single-threaded so a
+    # fresh short-lived session per span is fine.
+    with _model.session(n_threads=settings.TRANSCRIBE_THREADS) as session:
         result = session.run(pcm.astype(np.float32) / 32768.0)
     return result.text.strip()
 

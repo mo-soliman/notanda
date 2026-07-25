@@ -12,3 +12,6 @@ desktop/dist/
 # local junk
 .DS_Store
 *.log
+
+# secrets
+.env
